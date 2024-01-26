@@ -1,0 +1,139 @@
+blueprint:
+  name: Conversation Agent Agenda to Input Text
+  description: '# Conversation Agent Agenda to Input Text
+    Based on [@allenporter](https://github.com/allenporter)''s [Conversation
+    Agent Agenda Notification](https://gist.github.com/allenporter/e70d9eb090c7dbdd593cf526e07b4abe)
+
+    Conversation agent outputs input text based on the upcoming calendar agenda, location,
+    and weather. Based on [@allenporter](https://github.com/allenporter)''s [Conversation
+    Agent Agenda Notification](https://gist.github.com/allenporter/e70d9eb090c7dbdd593cf526e07b4abe)
+    Blueprint.
+
+
+    ## Setup
+    - Create an [input_text](https://www.home-assistant.io/integrations/input_text/)
+    entity with a character limit of at least 200 characters. This will be used to
+    store the output of the conversation agent. For example, `input_text.agenda`.
+
+    - Create a [conversation agent](https://www.home-assistant.io/integrations/conversation/).
+
+    - Create a [calendar](https://www.home-assistant.io/integrations/calendar/) entity
+    in Home Assistant. This will be used to determine upcoming calendar events. For
+    example, `calendar.calendar`.
+
+    - Create a [weather](https://www.home-assistant.io/integrations/weather/) entity
+    in Home Assistant. This will be used to determine the current weather and forecast.
+    For example, `weather.home`.'
+  domain: automation
+  input:
+    input_text_entity:
+      name: Input Text Entity
+      description: 'The name of the notify service where the notification should be
+        sent.'
+      selector:
+        entity:
+          multiple: false
+          filter:
+          - domain:
+            - input_text
+      default: input_text.agenda
+    calendar_entity:
+      name: Calendar
+      description: The calendar entity to use for finding upcoming calendar events.
+      selector:
+        entity:
+          multiple: false
+          filter:
+          - domain:
+            - calendar
+    calendar_duration:
+      name: Calendar Event duration
+      description: How many hours ahead to look for upcoming calendar events.
+      selector:
+        duration: {}
+      default:
+        hours: 18
+    weather_entity:
+      name: Weather Entity
+      description: The weather entity to use for upcoming weather forecast.
+      selector:
+        entity:
+          multiple: false
+          filter:
+          - domain:
+            - weather
+    zone_entity:
+      name: Home Zone Entity
+      description: 'The zone entity to use to determine approximate location for understanding
+        typical weather.'
+      selector:
+        entity:
+          multiple: false
+          filter:
+          - domain:
+            - zone
+    conversation_agent:
+      name: Conversation Agent
+      selector:
+        conversation_agent: {}
+    prompt:
+      name: Conversation Agent Prompt
+      selector:
+        text:
+          multiline: true
+          type: text
+          multiple: false
+      default: "You are a helpful personal agent that generates text for the user:\n-
+        Your answers are helpful, friendly, warm and insightful.\n- Do not greet the
+        user.\n- Limit characters to no more than 200 characters\n- Do not include
+        the time of day, as the user will already know this.\n- Do not include the
+        date, as the user will already know this.\n- Your answers are not technical,
+        and do not include Home Assistant internal details such as entities in responses.\n-
+        Your messages help the user prepare for their day, for example:\n  - Making
+        note of unusual weather for the location and time of year (but not mundane
+        details like \\\"0% chance of precipitation\\\")\n  - How much time remaining
+        until their first meeting\n  - Anything that may be special or unique, such
+        as celebrating a birthday"
+  source_url: https://gist.github.com/timmo001/2af48ef11ff6a2f8286b90528f57e557
+trigger:
+  platform: time_pattern
+  hours: 6
+action:
+- variables:
+    weather_entity: !input weather_entity
+    calendar_entity: !input calendar_entity
+    zone_entity: !input zone_entity
+    calendar_duration: !input calendar_duration
+    prompt: !input prompt
+- alias: Fetch Calendar Agenda
+  service: calendar.list_events
+  data:
+    duration: !input calendar_duration
+  target:
+    entity_id: !input calendar_entity
+  response_variable: agenda
+- alias: Conversation Agent Notification Text
+  service: conversation.process
+  data:
+    text: "Time: {{ now() }}\n{%- if zone_entity is defined %}\nLatitude: {{ state_attr(zone_entity,
+      'latitude') | round(1) }}\nLongitude: {{ state_attr(zone_entity, 'longitude')
+      | round(1) }}\n{% endif %}\n\n{%- if weather_entity is defined %}\n{%- set forecast
+      = state_attr(weather_entity, 'forecast')[0] %}\n{%- set temperature_unit = state_attr(weather_entity,
+      'temperature_unit') -%}\nWeather: {{ forecast.condition }} ({{ forecast.temperature
+      }}{{ temperature_unit }}, {{ forecast.precipitation }}% precipitation)\n{%-
+      endif %}\n\nCalendar \"{{ state_attr(calendar_entity, 'friendly_name') }}\"
+      events for the next {{ calendar_duration.hours }}:\n{%- if agenda.events %}\n
+      \ {%- for event in agenda.events %}\n  - Summary: {{ event.summary }}\n    Start-End:
+      {% if event.start is defined %}{{ event.start }} to {{ event.end }}{% else %}All
+      Day{% endif %}\n    {%- if event.descripton is defined %}\n    Descripton: {{
+      event.descripton }}\n    {% endif -%}\n    {%- if event.location is defined
+      %}\n      Location: {{ event.location }}\n    {% endif -%}\n  {%- endfor %}\n{%-
+      else %}\n  - No upcoming events.\n{%- endif %}\n\n{{ prompt }}"
+    agent_id: !input conversation_agent
+  response_variable: agent
+- alias: Update Input Text
+  service: input_text.set_value
+  data:
+    value: '{{ agent.response.speech.plain.speech }}'
+  target:
+    entity_id: !input input_text_entity
