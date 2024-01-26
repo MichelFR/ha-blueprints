@@ -1,6 +1,7 @@
 blueprint:
   name: Conversation Agent Agenda to Input Text
   description: '# Conversation Agent Agenda to Input Text
+  
     Based on [@allenporter](https://github.com/allenporter)''s [Conversation
     Agent Agenda Notification](https://gist.github.com/allenporter/e70d9eb090c7dbdd593cf526e07b4abe)
 
@@ -106,7 +107,7 @@ action:
     calendar_duration: !input calendar_duration
     prompt: !input prompt
 - alias: Fetch Calendar Agenda
-  service: calendar.list_events
+  service: calendar.get_events
   data:
     duration: !input calendar_duration
   target:
